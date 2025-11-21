@@ -1,0 +1,25 @@
+[package]
+name = "syncwave_core"  # This fixes the naming warning
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "syncwave_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+# The Python Bridge
+pyo3 = { version = "0.20.0", features = ["extension-module"] }
+
+# Audio Capture (The tool that replaces Stereo Mix)
+cpal = "0.15.2"
+
+# Networking (For low-latency UDP)
+socket2 = "0.5.5"
+
+# Audio Encoding (Compression)
+# TODO: Install CMake to enable Opus compression
+# audiopus = { version = "0.3.0-rc.0" }
+
+# Error handling
+anyhow = "1.0"
