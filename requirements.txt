@@ -9,3 +9,4 @@ pillow
 pycaw
 scipy
 zeroconf
+opuslib

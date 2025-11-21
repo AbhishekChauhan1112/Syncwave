@@ -14,6 +14,15 @@ build/
 .idea/
 *.log
 
+# Rust build artifacts
+target/
+Cargo.lock
+
+# PyInstaller
+*.spec
+build/
+dist/
+
 # Personal documentation (not needed in repo)
 ROADMAP.md
 PROJECT_STRUCTURE.md
@@ -22,3 +31,7 @@ FEATURES.md
 IMPLEMENTATION_SUMMARY.md
 QUICKSTART.md
 CHANGELOG.md
+SOLUTION.md
+ENHANCEMENTS.md
+FEEDBACK_MITIGATION.md
+REFACTOR_SUMMARY.md
