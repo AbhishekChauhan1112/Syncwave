@@ -221,6 +221,12 @@ pyinstaller syncwave.spec --clean --noconfirm --noupx
 
 ## 🐛 Troubleshooting Build Issues
 
+### Issue: "CMake Error: Compatibility with CMake < 3.5 has been removed"
+
+**Solution:**
+This occurs because the `audiopus` library requires an older version of CMake than what might be installed on your system.
+👉 **See [TROUBLESHOOTING_OPUS_BUILD.md](TROUBLESHOOTING_OPUS_BUILD.md) for the complete fix.**
+
 ### Issue: "syncwave_core.pyd not found"
 
 **Solution:**

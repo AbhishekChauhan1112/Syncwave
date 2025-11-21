@@ -187,8 +187,9 @@ try:
         if packet['type'] == PACKET_TYPE_OPUS and decoder:
             try:
                 # Decode Opus to PCM
-                pcm_data = decoder.decode_float(packet['data'], config['sample_rate'], decode_fec=False)
-                jitter_buffer.add(pcm_data.tobytes())
+                # decode_float returns bytes (raw float data)
+                pcm_data = decoder.decode_float(packet['data'], 2880, decode_fec=False)
+                jitter_buffer.add(pcm_data)
             except Exception as e:
                 print(f"⚠️  Opus decode error: {e}")
                 continue

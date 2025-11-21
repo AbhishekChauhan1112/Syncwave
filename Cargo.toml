@@ -18,8 +18,7 @@ cpal = "0.15.2"
 socket2 = "0.5.5"
 
 # Audio Encoding (Compression)
-# TODO: Install CMake to enable Opus compression
-# audiopus = { version = "0.3.0-rc.0" }
+audiopus = { version = "0.3.0-rc.0" }
 
 # Error handling
 anyhow = "1.0"

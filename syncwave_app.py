@@ -283,9 +283,9 @@ class SyncWaveApp(ctk.CTk):
         
         ctk.CTkCheckBox(
             options_frame,
-            text="Enable Compression (Opus - requires setup)",
+            text="Enable Compression (Opus)",
             variable=self.server_compression_var,
-            state="disabled"
+            state="normal"
         ).pack(anchor="w", pady=5)
         
         # Control buttons

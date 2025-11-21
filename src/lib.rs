@@ -3,10 +3,12 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::net::UdpSocket;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use audiopus::{coder::Encoder as OpusEncoder, Application as OpusApplication, Channels as OpusChannels, SampleRate as OpusSampleRate};
 
 const HEADER_MAGIC: &[u8; 4] = b"SYNC";
 const PROTOCOL_VERSION: u8 = 1;
 const PACKET_TYPE_RAW: u8 = 0;
+const PACKET_TYPE_OPUS: u8 = 1;
 
 fn as_u8_slice(v: &[f32]) -> &[u8] {
     unsafe {
@@ -40,8 +42,8 @@ fn build_packet(packet_type: u8, data: &[u8]) -> Vec<u8> {
 }
 
 #[pyfunction]
-fn start_audio_server(py: Python, target_ip: String, target_port: u16, _use_compression: Option<bool>, broadcast: Option<bool>) -> PyResult<()> {
-    let use_compression = false;
+fn start_audio_server(py: Python, target_ip: String, target_port: u16, use_compression: Option<bool>, broadcast: Option<bool>) -> PyResult<()> {
+    let use_compression = use_compression.unwrap_or(false);
     let broadcast = broadcast.unwrap_or(false);
     
     let socket = UdpSocket::bind("0.0.0.0:0").map_err(|e| PyErr::new::<pyo3::exceptions::PyOSError, _>(format!("Socket bind failed: {}", e)))?;
@@ -64,6 +66,38 @@ fn start_audio_server(py: Python, target_ip: String, target_port: u16, _use_comp
     
     println!(" Device config: {} Hz, {} channels", sample_rate, channels);
 
+    // Initialize Opus encoder if compression is enabled
+    let mut opus_encoder = if use_compression {
+        let opus_sample_rate = match sample_rate {
+            8000 => OpusSampleRate::Hz8000,
+            12000 => OpusSampleRate::Hz12000,
+            16000 => OpusSampleRate::Hz16000,
+            24000 => OpusSampleRate::Hz24000,
+            48000 => OpusSampleRate::Hz48000,
+            _ => {
+                println!(" Warning: Sample rate {} Hz not supported by Opus. Falling back to raw audio.", sample_rate);
+                // We can't easily change the flag here since it's used in the closure type signature if we were using dynamic dispatch, 
+                // but here we are using an Option or similar.
+                // For simplicity, we'll just panic or return error, or better, handle it gracefully.
+                // Let's return an error for now to let the user know.
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Sample rate {} Hz not supported by Opus (supported: 8k, 12k, 16k, 24k, 48k)", sample_rate)));
+            }
+        };
+        
+        let opus_channels = match channels {
+            1 => OpusChannels::Mono,
+            2 => OpusChannels::Stereo,
+            _ => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Channel count {} not supported by Opus (1 or 2 only)", channels))),
+        };
+
+        match OpusEncoder::new(opus_sample_rate, opus_channels, OpusApplication::Audio) {
+            Ok(encoder) => Some(encoder),
+            Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Failed to create Opus encoder: {:?}", e))),
+        }
+    } else {
+        None
+    };
+
     for _ in 0..5 {
         send_header(&socket, &target_addr, sample_rate, channels, use_compression).map_err(|e| PyErr::new::<pyo3::exceptions::PyOSError, _>(format!("Header send failed: {}", e)))?;
         thread::sleep(Duration::from_millis(50));
@@ -76,6 +110,12 @@ fn start_audio_server(py: Python, target_ip: String, target_port: u16, _use_comp
     let packet_counter = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     let packet_counter_clone = packet_counter.clone();
 
+    // Buffer for Opus encoding
+    let mut sample_buffer: Vec<f32> = Vec::new();
+    let frame_size_ms = 20; // 20ms frame size
+    let samples_per_frame = (sample_rate as usize * frame_size_ms) / 1000 * channels as usize;
+    let mut encoded_buffer = vec![0u8; 4000]; // Max Opus packet size is usually smaller, 4k is safe
+
     let stream = device.build_input_stream(
         &config,
         move |data: &[f32], _: &_| {
@@ -83,9 +123,33 @@ fn start_audio_server(py: Python, target_ip: String, target_port: u16, _use_comp
             if count % 1000 == 0 {
                 let _ = send_header(&socket_clone, &target_addr, sample_rate, channels, use_compression);
             }
-            let byte_data = as_u8_slice(data);
-            let packet = build_packet(PACKET_TYPE_RAW, byte_data);
-            let _ = socket_clone.send_to(&packet, &target_addr);
+
+            if let Some(encoder) = &mut opus_encoder {
+                // Compression enabled
+                sample_buffer.extend_from_slice(data);
+                
+                while sample_buffer.len() >= samples_per_frame {
+                    let frame_slice = &sample_buffer[0..samples_per_frame];
+                    
+                    match encoder.encode_float(frame_slice, &mut encoded_buffer) {
+                        Ok(len) => {
+                            let packet = build_packet(PACKET_TYPE_OPUS, &encoded_buffer[0..len]);
+                            let _ = socket_clone.send_to(&packet, &target_addr);
+                        },
+                        Err(e) => eprintln!("Opus encode error: {:?}", e),
+                    }
+                    
+                    // Remove processed samples
+                    // This is inefficient (O(N)), but for audio buffer sizes it's acceptable for now.
+                    // A ring buffer would be better.
+                    sample_buffer.drain(0..samples_per_frame);
+                }
+            } else {
+                // Raw audio
+                let byte_data = as_u8_slice(data);
+                let packet = build_packet(PACKET_TYPE_RAW, byte_data);
+                let _ = socket_clone.send_to(&packet, &target_addr);
+            }
         },
         move |err| eprintln!("Stream error: {}", err),
         None

@@ -10,3 +10,5 @@ pycaw
 scipy
 zeroconf
 opuslib
+cmake==3.25.0
+maturin
